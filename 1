@@ -1,95 +1,186 @@
--- ====================== AUTO AIM ASSIST KE HEAD (SAAT SHIFT LOCK) ======================
-
+local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local Camera = workspace.CurrentCamera
 
-local AIM_ASSIST_RANGE = 12       -- max jarak angular (derajat) untuk dianggap "dekat"
-local AIM_ASSIST_STRENGTH = 0.45  -- 0 = mati, 1 = langsung snap, 0.4~0.6 biasanya smooth & wajar
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+-- Buat GUI
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "HeadHighlighterGui"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = playerGui
+
+local toggleButton = Instance.new("TextButton")
+toggleButton.Size = UDim2.new(0, 180, 0, 50)
+toggleButton.Position = UDim2.new(0, 10, 0, 10)
+toggleButton.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+toggleButton.Text = "ESP Head: OFF"
+toggleButton.TextColor3 = Color3.new(1, 1, 1)
+toggleButton.TextScaled = true
+toggleButton.Font = Enum.Font.GothamBold
+toggleButton.BorderSizePixel = 0
+toggleButton.Parent = screenGui
+
+local corner = Instance.new("UICorner")
+corner.CornerRadius = UDim.new(0, 8)
+corner.Parent = toggleButton
+
+-- Settings
+local highlights = {}
+local enabled = false
+
+local AIM_ASSIST_RANGE = 12
+local AIM_ASSIST_STRENGTH = 0.35   -- turunin kalau terlalu nempel
+
+local function createHighlight(character)
+    if not character then return end
+    
+    -- Lebih aman parent ke character, bukan Head
+    local highlight = Instance.new("Highlight")
+    highlight.Adornee = character
+    highlight.FillColor = Color3.fromRGB(0, 255, 0)
+    highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+    highlight.FillTransparency = 0.4
+    highlight.OutlineTransparency = 0
+    highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop   -- tambahan biar lebih keliatan
+    highlight.Parent = character   -- parent ke character, bukan Head
+    
+    return highlight
+end
+
+local function enableForPlayer(p)
+    if p == player or not p.Character then return end
+    
+    local char = p.Character
+    if char and not highlights[p] then
+        highlights[p] = createHighlight(char)
+    end
+end
+
+local function toggleHighlights()
+    enabled = not enabled
+    toggleButton.Text = "ESP Head: " .. (enabled and "ON" or "OFF")
+    toggleButton.BackgroundColor3 = enabled and Color3.fromRGB(0, 170, 0) or Color3.fromRGB(45, 45, 45)
+    
+    if enabled then
+        for _, p in Players:GetPlayers() do
+            enableForPlayer(p)
+        end
+    else
+        for _, hl in pairs(highlights) do
+            if hl then hl:Destroy() end
+        end
+        highlights = {}
+    end
+end
+
+toggleButton.MouseButton1Click:Connect(toggleHighlights)
+
+-- Handle character respawn / baru load
+local function onCharacterAdded(char, p)
+    if p == player then return end
+    char:WaitForChild("Head", 5)
+    
+    if enabled then
+        if highlights[p] then highlights[p]:Destroy() end
+        highlights[p] = createHighlight(char)
+    end
+end
+
+local function connectPlayer(p)
+    if p == player then return end
+    
+    if p.Character then
+        onCharacterAdded(p.Character, p)
+    end
+    
+    p.CharacterAdded:Connect(function(char)
+        onCharacterAdded(char, p)
+    end)
+end
+
+-- Connect semua player yang sudah ada
+for _, p in Players:GetPlayers() do
+    connectPlayer(p)
+end
+
+Players.PlayerAdded:Connect(connectPlayer)
+
+Players.PlayerRemoving:Connect(function(p)
+    if highlights[p] then
+        highlights[p]:Destroy()
+        highlights[p] = nil
+    end
+end)
+
+-- ================== AIM ASSIST (Shift Lock) ==================
 
 local function isShiftLockActive()
-    -- Cara paling reliable di 2025-2026
-    return UserInputService.MouseBehavior == Enum.MouseBehavior.LockCenter
+    -- Lebih reliable di 2025-2026
+    return UserInputService.MouseBehavior == Enum.MouseBehavior.LockCenter 
+        or UserInputService.MouseIconEnabled == false  -- backup check
 end
 
 local function getClosestHeadToCrosshair()
     if not enabled then return nil end
-    if not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then return nil end
+    local char = player.Character
+    if not char or not char:FindFirstChild("HumanoidRootPart") then return nil end
     
-    local rootPart = player.Character.HumanoidRootPart
+    local root = char.HumanoidRootPart
     local viewportSize = Camera.ViewportSize
-    local centerScreen = Vector2.new(viewportSize.X/2, viewportSize.Y/2)
+    local center = Vector2.new(viewportSize.X/2, viewportSize.Y/2)
     
-    local bestHead = nil
-    local bestAngle = AIM_ASSIST_RANGE
+    local bestHead, bestAngle = nil, AIM_ASSIST_RANGE
     
-    for playerOther, highlight in pairs(highlights) do
-        if not highlight.Adornee then continue end
+    for _, hl in pairs(highlights) do
+        local head = hl.Adornee:FindFirstChild("Head") or hl.Adornee:FindFirstChildWhichIsA("BasePart")
+        if not head then continue end
         
-        local head = highlight.Adornee
-        if not head:IsA("BasePart") then continue end
+        local _, onScreen = Camera:WorldToViewportPoint(head.Position)
+        if not onScreen then continue end
         
-        local screenPos, onScreen = Camera:WorldToViewportPoint(head.Position)
+        local dir = (head.Position - Camera.CFrame.Position).Unit
+        local angle = math.deg(math.acos(Camera.CFrame.LookVector:Dot(dir)))
         
-        if onScreen then
-            local distanceToCenter = (Vector2.new(screenPos.X, screenPos.Y) - centerScreen).Magnitude
-            
-            -- Konversi ke angle (lebih akurat daripada pixel)
-            local direction = (head.Position - Camera.CFrame.Position).Unit
-            local forward = Camera.CFrame.LookVector
-            
-            local angle = math.deg(math.acos(forward:Dot(direction)))
-            
-            if angle < bestAngle then
-                bestAngle = angle
-                bestHead = head
-            end
+        if angle < bestAngle then
+            bestAngle = angle
+            bestHead = head
         end
     end
     
     return bestHead
 end
 
--- ==========================================
---      SISTEM AIM ASSIST (SMOOTH)
--- ==========================================
+local currentTarget = nil
 
-local currentTargetHead = nil
-
-RunService.RenderStepped:Connect(function(deltaTime)
+RunService.RenderStepped:Connect(function(dt)
     if not isShiftLockActive() then 
-        currentTargetHead = nil
+        currentTarget = nil
         return 
     end
     
-    local closestHead = getClosestHeadToCrosshair()
-    
-    if closestHead and closestHead.Parent then
-        currentTargetHead = closestHead
-    else
-        currentTargetHead = nil
-        return
+    local head = getClosestHeadToCrosshair()
+    if not head then 
+        currentTarget = nil
+        return 
     end
     
-    local rootPart = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
-    if not rootPart then return end
+    currentTarget = head
+    local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+    if not root then return end
     
-    local targetPos = currentTargetHead.Position
+    local targetCFrame = CFrame.lookAt(root.Position, head.Position)
     
-    -- Arah yang diinginkan
-    local desiredCFrame = CFrame.new(rootPart.Position, targetPos)
+    -- Smooth + keep horizontal
+    local current = root.CFrame
+    local newCFrame = current:Lerp(targetCFrame, AIM_ASSIST_STRENGTH)
     
-    -- Smooth lerp
-    local currentCFrame = rootPart.CFrame
-    local newCFrame = currentCFrame:Lerp(desiredCFrame, AIM_ASSIST_STRENGTH)
-    
-    -- Jaga agar tetap horizontal (tidak ikut naik/turun terlalu ekstrim)
-    local lookVector = (targetPos - rootPart.Position).Unit
-    local flatLook = Vector3.new(lookVector.X, 0, lookVector.Z).Unit
-    
+    local flatLook = Vector3.new(newCFrame.LookVector.X, 0, newCFrame.LookVector.Z).Unit
     if flatLook.Magnitude > 0.01 then
-        rootPart.CFrame = CFrame.new(rootPart.Position) * CFrame.new(Vector3.new(), flatLook)
+        root.CFrame = CFrame.new(root.Position, root.Position + flatLook * 10)
     end
 end)
 
-print("Auto aim assist to head (shift lock) telah aktif!")
+print("ESP + Auto Aim Assist Loaded! Tekan tombol untuk ON/OFF")
