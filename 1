@@ -1,95 +1,95 @@
-local Players = game:GetService("Players")
-local player = Players.LocalPlayer
-local playerGui = player:WaitForChild("PlayerGui")
+-- ====================== AUTO AIM ASSIST KE HEAD (SAAT SHIFT LOCK) ======================
 
-local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "HeadHighlighterGui"
-screenGui.ResetOnSpawn = false
-screenGui.Parent = playerGui
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local Camera = workspace.CurrentCamera
 
-local toggleButton = Instance.new("TextButton")
-toggleButton.Name = "ToggleButton"
-toggleButton.Size = UDim2.new(0, 180, 0, 50)
-toggleButton.Position = UDim2.new(0, 10, 0, 10)
-toggleButton.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-toggleButton.Text = "Esp Head: OFF"
-toggleButton.TextColor3 = Color3.new(1, 1, 1)
-toggleButton.TextScaled = true
-toggleButton.Font = Enum.Font.GothamBold
-toggleButton.BorderSizePixel = 0
-toggleButton.Parent = screenGui
+local AIM_ASSIST_RANGE = 12       -- max jarak angular (derajat) untuk dianggap "dekat"
+local AIM_ASSIST_STRENGTH = 0.45  -- 0 = mati, 1 = langsung snap, 0.4~0.6 biasanya smooth & wajar
 
-local corner = Instance.new("UICorner")
-corner.CornerRadius = UDim.new(0, 8)
-corner.Parent = toggleButton
-
-local highlights = {}
-local enabled = false
-
-local function createHighlight(head)
-    local highlight = Instance.new("Highlight")
-    highlight.Adornee = head
-    highlight.FillColor = Color3.fromRGB(0, 255, 0) 
-    highlight.OutlineColor = Color3.fromRGB(255, 255, 255) 
-    highlight.FillTransparency = 0.4
-    highlight.OutlineTransparency = 0
-    highlight.Parent = head
-    return highlight
+local function isShiftLockActive()
+    -- Cara paling reliable di 2025-2026
+    return UserInputService.MouseBehavior == Enum.MouseBehavior.LockCenter
 end
 
-local function enableForPlayer(p)
-    if p == player or not p.Character then return end
-    local head = p.Character:FindFirstChild("Head")
-    if head and not highlights[p] then
-        highlights[p] = createHighlight(head)
-    end
-end
-
-local function toggleHighlights()
-    enabled = not enabled
-    toggleButton.Text = "Esp Head: " .. (enabled and "ON" or "OFF")
-    toggleButton.BackgroundColor3 = enabled and Color3.fromRGB(0, 170, 0) or Color3.fromRGB(45, 45, 45)
+local function getClosestHeadToCrosshair()
+    if not enabled then return nil end
+    if not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then return nil end
     
-    if enabled then
-        for _, p in ipairs(Players:GetPlayers()) do
-            enableForPlayer(p)
+    local rootPart = player.Character.HumanoidRootPart
+    local viewportSize = Camera.ViewportSize
+    local centerScreen = Vector2.new(viewportSize.X/2, viewportSize.Y/2)
+    
+    local bestHead = nil
+    local bestAngle = AIM_ASSIST_RANGE
+    
+    for playerOther, highlight in pairs(highlights) do
+        if not highlight.Adornee then continue end
+        
+        local head = highlight.Adornee
+        if not head:IsA("BasePart") then continue end
+        
+        local screenPos, onScreen = Camera:WorldToViewportPoint(head.Position)
+        
+        if onScreen then
+            local distanceToCenter = (Vector2.new(screenPos.X, screenPos.Y) - centerScreen).Magnitude
+            
+            -- Konversi ke angle (lebih akurat daripada pixel)
+            local direction = (head.Position - Camera.CFrame.Position).Unit
+            local forward = Camera.CFrame.LookVector
+            
+            local angle = math.deg(math.acos(forward:Dot(direction)))
+            
+            if angle < bestAngle then
+                bestAngle = angle
+                bestHead = head
+            end
         end
+    end
+    
+    return bestHead
+end
+
+-- ==========================================
+--      SISTEM AIM ASSIST (SMOOTH)
+-- ==========================================
+
+local currentTargetHead = nil
+
+RunService.RenderStepped:Connect(function(deltaTime)
+    if not isShiftLockActive() then 
+        currentTargetHead = nil
+        return 
+    end
+    
+    local closestHead = getClosestHeadToCrosshair()
+    
+    if closestHead and closestHead.Parent then
+        currentTargetHead = closestHead
     else
-        for p, highlight in pairs(highlights) do
-            if highlight then
-                highlight:Destroy()
-            end
-        end
-        highlights = {}
+        currentTargetHead = nil
+        return
     end
-end
-
-toggleButton.MouseButton1Click:Connect(toggleHighlights)
-
-local function connectPlayer(p)
-    if p == player then return end
     
-    p.CharacterAdded:Connect(function(char)
-        local head = char:WaitForChild("Head")
-        if enabled then
-
-            if highlights[p] then
-                highlights[p]:Destroy()
-            end
-            highlights[p] = createHighlight(head)
-        end
-    end)
-end
-
-for _, p in ipairs(Players:GetPlayers()) do
-    connectPlayer(p)
-end
-
-Players.PlayerAdded:Connect(connectPlayer)
-
-Players.PlayerRemoving:Connect(function(p)
-    if highlights[p] then
-        highlights[p]:Destroy()
-        highlights[p] = nil
+    local rootPart = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+    if not rootPart then return end
+    
+    local targetPos = currentTargetHead.Position
+    
+    -- Arah yang diinginkan
+    local desiredCFrame = CFrame.new(rootPart.Position, targetPos)
+    
+    -- Smooth lerp
+    local currentCFrame = rootPart.CFrame
+    local newCFrame = currentCFrame:Lerp(desiredCFrame, AIM_ASSIST_STRENGTH)
+    
+    -- Jaga agar tetap horizontal (tidak ikut naik/turun terlalu ekstrim)
+    local lookVector = (targetPos - rootPart.Position).Unit
+    local flatLook = Vector3.new(lookVector.X, 0, lookVector.Z).Unit
+    
+    if flatLook.Magnitude > 0.01 then
+        rootPart.CFrame = CFrame.new(rootPart.Position) * CFrame.new(Vector3.new(), flatLook)
     end
 end)
+
+print("Auto aim assist to head (shift lock) telah aktif!")
