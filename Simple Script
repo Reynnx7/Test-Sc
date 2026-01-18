@@ -122,8 +122,8 @@ local function createToggleGUI()
         end)
     end
     
-    createToggleButton("ESP Highlight", 0.3, true, function(v) ESP_ENABLED = v end)
-    createToggleButton("Smart Crosshair", 0.65, true, function(v) SMART_CROSSHAIR = v end)
+    createToggleButton("ESP BOX", 0.3, true, function(v) ESP_ENABLED = v end)
+    createToggleButton("AIM ASSIST", 0.65, true, function(v) SMART_CROSSHAIR = v end)
     
     local dragging, dragInput, dragStart, startPos
     Frame.InputBegan:Connect(function(input)
@@ -188,7 +188,6 @@ createToggleGUI()
 
 print("ESP + Smart Crosshair loaded! Tekan tombol di tengah untuk kontrol")
 
--- Optional: hotkey untuk hide/show GUI (contoh: tekan Insert)
 UserInputService.InputBegan:Connect(function(input, gp)
     if gp then return end
     if input.KeyCode == Enum.KeyCode.Insert then
