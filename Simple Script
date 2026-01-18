@@ -1,0 +1,200 @@
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+
+local ESP_ENABLED = true
+local SMART_CROSSHAIR = true
+
+local ESP_COLOR = Color3.fromRGB(255, 80, 80) 
+local CROSSHAIR_COLOR = Color3.fromRGB(255, 255, 0)
+
+local function createESP(player)
+    if player == LocalPlayer then return end
+    if not player.Character then return end
+    
+    local character = player.Character
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    if not humanoid then return end
+    
+    local rootPart = character:FindFirstChild("HumanoidRootPart")
+    if not rootPart then return end
+    
+    local bill = Instance.new("BillboardGui")
+    bill.Name = "ESP_Name"
+    bill.Adornee = rootPart
+    bill.Size = UDim2.new(0, 180, 0, 50)
+    bill.StudsOffset = Vector3.new(0, 3.5, 0)
+    bill.AlwaysOnTop = true
+    bill.Parent = character
+    
+    local nameLabel = Instance.new("TextLabel")
+    nameLabel.Size = UDim2.new(1,0,1,0)
+    nameLabel.BackgroundTransparency = 1
+    nameLabel.Text = player.Name
+    nameLabel.TextColor3 = ESP_COLOR
+    nameLabel.TextStrokeTransparency = 0.4
+    nameLabel.TextStrokeColor3 = Color3.new(0,0,0)
+    nameLabel.Font = Enum.Font.SourceSansBold
+    nameLabel.TextSize = 14
+    nameLabel.Parent = bill
+    
+    local box = Instance.new("BoxHandleAdornment")
+    box.Name = "ESP_Box"
+    box.Adornee = rootPart
+    box.Size = Vector3.new(4.5, 6, 4.5)
+    box.Color3 = ESP_COLOR
+    box.Transparency = 0.65
+    box.AlwaysOnTop = true
+    box.ZIndex = 10
+    box.Parent = character
+end
+
+local function getClosestHeadToCrosshair()
+    local closestPlayer = nil
+    local closestAngle = math.rad(8) 
+    
+    local mousePos = UserInputService:GetMouseLocation()
+    local ray = Camera:ScreenPointToRay(mousePos.X, mousePos.Y)
+    
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player == LocalPlayer then continue end
+        if not player.Character then continue end
+        
+        local head = player.Character:FindFirstChild("Head")
+        if not head then continue end
+        
+        local screenPos, onScreen = Camera:WorldToViewportPoint(head.Position)
+        if not onScreen then continue end
+        
+        local dist = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
+        local angle = math.rad(dist / (Camera.ViewportSize.Magnitude / 2) * 45)
+        
+        if angle < closestAngle then
+            closestAngle = angle
+            closestPlayer = player
+        end
+    end
+    
+    return closestPlayer
+end
+
+local function createToggleGUI()
+    local ScreenGui = Instance.new("ScreenGui")
+    ScreenGui.Name = "ESP_Crosshair_Toggle"
+    ScreenGui.ResetOnSpawn = false
+    ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+    
+    local Frame = Instance.new("Frame")
+    Frame.Size = UDim2.new(0, 180, 0, 110)
+    Frame.Position = UDim2.new(0.5, -90, 0.5, -55)
+    Frame.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
+    Frame.BorderSizePixel = 0
+    Frame.Parent = ScreenGui
+    
+    local Title = Instance.new("TextLabel")
+    Title.Size = UDim2.new(1,0,0,30)
+    Title.BackgroundTransparency = 1
+    Title.Text = "ESP & Crosshair Menu"
+    Title.TextColor3 = Color3.fromRGB(220,220,220)
+    Title.Font = Enum.Font.SourceSansBold
+    Title.TextSize = 18
+    Title.Parent = Frame
+    
+    local function createToggleButton(name, posY, default, callback)
+        local btn = Instance.new("TextButton")
+        btn.Size = UDim2.new(0.9,0,0,35)
+        btn.Position = UDim2.new(0.05,0,posY,0)
+        btn.BackgroundColor3 = default and Color3.fromRGB(60,180,80) or Color3.fromRGB(120,40,40)
+        btn.TextColor3 = Color3.new(1,1,1)
+        btn.Font = Enum.Font.SourceSansBold
+        btn.TextSize = 16
+        btn.Text = name .. ": " .. (default and "ON" or "OFF")
+        btn.Parent = Frame
+        
+        btn.MouseButton1Click:Connect(function()
+            callback(not _G[name])
+            _G[name] = not _G[name]
+            btn.BackgroundColor3 = _G[name] and Color3.fromRGB(60,180,80) or Color3.fromRGB(120,40,40)
+            btn.Text = name .. ": " .. (_G[name] and "ON" or "OFF")
+        end)
+    end
+    
+    createToggleButton("ESP Highlight", 0.3, true, function(v) ESP_ENABLED = v end)
+    createToggleButton("Smart Crosshair", 0.65, true, function(v) SMART_CROSSHAIR = v end)
+    
+    local dragging, dragInput, dragStart, startPos
+    Frame.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+            dragStart = input.Position
+            startPos = Frame.Position
+            
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                end
+            end)
+        end
+    end)
+    
+    Frame.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement and dragging then
+            local delta = input.Position - dragStart
+            Frame.Position = UDim2.new(
+                startPos.X.Scale, startPos.X.Offset + delta.X,
+                startPos.Y.Scale, startPos.Y.Offset + delta.Y
+            )
+        end
+    end)
+end
+
+for _, player in ipairs(Players:GetPlayers()) do
+    if player.Character then
+        createESP(player)
+    end
+    player.CharacterAdded:Connect(function()
+        task.wait(0.5)
+        createESP(player)
+    end)
+end
+
+Players.PlayerAdded:Connect(function(player)
+    player.CharacterAdded:Connect(function()
+        task.wait(0.5)
+        createESP(player)
+    end)
+end)
+
+local crosshairConnection
+crosshairConnection = RunService.RenderStepped:Connect(function()
+    if not SMART_CROSSHAIR then return end
+    
+    local closest = getClosestHeadToCrosshair()
+    
+    if closest and closest.Character and closest.Character:FindFirstChild("Head") then
+        local head = closest.Character.Head
+        local screenPos, onScreen = Camera:WorldToViewportPoint(head.Position)
+        
+        if onScreen then
+            print("Target: " .. closest.Name) 
+        end
+    end
+end)
+
+createToggleGUI()
+
+print("ESP + Smart Crosshair loaded! Tekan tombol di tengah untuk kontrol")
+
+-- Optional: hotkey untuk hide/show GUI (contoh: tekan Insert)
+UserInputService.InputBegan:Connect(function(input, gp)
+    if gp then return end
+    if input.KeyCode == Enum.KeyCode.Insert then
+        local gui = LocalPlayer.PlayerGui:FindFirstChild("ESP_Crosshair_Toggle")
+        if gui then
+            gui.Enabled = not gui.Enabled
+        end
+    end
+end)
