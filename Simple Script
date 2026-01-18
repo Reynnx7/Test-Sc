@@ -190,7 +190,7 @@ print("ESP + Smart Crosshair loaded! Tekan tombol di tengah untuk kontrol")
 
 UserInputService.InputBegan:Connect(function(input, gp)
     if gp then return end
-    if input.KeyCode == Enum.KeyCode.Insert then
+    if input.KeyCode == Enum.KeyCode.Control then
         local gui = LocalPlayer.PlayerGui:FindFirstChild("ESP_Crosshair_Toggle")
         if gui then
             gui.Enabled = not gui.Enabled
