@@ -1,0 +1,95 @@
+local Players = game:GetService("Players")
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "HeadHighlighterGui"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = playerGui
+
+local toggleButton = Instance.new("TextButton")
+toggleButton.Name = "ToggleButton"
+toggleButton.Size = UDim2.new(0, 180, 0, 50)
+toggleButton.Position = UDim2.new(0, 10, 0, 10)
+toggleButton.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+toggleButton.Text = "Esp Head: OFF"
+toggleButton.TextColor3 = Color3.new(1, 1, 1)
+toggleButton.TextScaled = true
+toggleButton.Font = Enum.Font.GothamBold
+toggleButton.BorderSizePixel = 0
+toggleButton.Parent = screenGui
+
+local corner = Instance.new("UICorner")
+corner.CornerRadius = UDim.new(0, 8)
+corner.Parent = toggleButton
+
+local highlights = {}
+local enabled = false
+
+local function createHighlight(head)
+    local highlight = Instance.new("Highlight")
+    highlight.Adornee = head
+    highlight.FillColor = Color3.fromRGB(0, 255, 0) 
+    highlight.OutlineColor = Color3.fromRGB(255, 255, 255) 
+    highlight.FillTransparency = 0.4
+    highlight.OutlineTransparency = 0
+    highlight.Parent = head
+    return highlight
+end
+
+local function enableForPlayer(p)
+    if p == player or not p.Character then return end
+    local head = p.Character:FindFirstChild("Head")
+    if head and not highlights[p] then
+        highlights[p] = createHighlight(head)
+    end
+end
+
+local function toggleHighlights()
+    enabled = not enabled
+    toggleButton.Text = "Esp Head: " .. (enabled and "ON" or "OFF")
+    toggleButton.BackgroundColor3 = enabled and Color3.fromRGB(0, 170, 0) or Color3.fromRGB(45, 45, 45)
+    
+    if enabled then
+        for _, p in ipairs(Players:GetPlayers()) do
+            enableForPlayer(p)
+        end
+    else
+        for p, highlight in pairs(highlights) do
+            if highlight then
+                highlight:Destroy()
+            end
+        end
+        highlights = {}
+    end
+end
+
+toggleButton.MouseButton1Click:Connect(toggleHighlights)
+
+local function connectPlayer(p)
+    if p == player then return end
+    
+    p.CharacterAdded:Connect(function(char)
+        local head = char:WaitForChild("Head")
+        if enabled then
+
+            if highlights[p] then
+                highlights[p]:Destroy()
+            end
+            highlights[p] = createHighlight(head)
+        end
+    end)
+end
+
+for _, p in ipairs(Players:GetPlayers()) do
+    connectPlayer(p)
+end
+
+Players.PlayerAdded:Connect(connectPlayer)
+
+Players.PlayerRemoving:Connect(function(p)
+    if highlights[p] then
+        highlights[p]:Destroy()
+        highlights[p] = nil
+    end
+end)
